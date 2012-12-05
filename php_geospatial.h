@@ -71,6 +71,7 @@ typedef struct {
  *  The WGS84 elipsoid semi major axes
  */
 const geo_ellipsoid wgs84 = {6378137.000, 6356752.3142};
+
 /**
  *  The Airy 1830 elipsoid semi major axes
  */
@@ -92,6 +93,7 @@ const geo_helmert_constants wgs84_osgb36 = {
 /**
  *  The values of the 7 variables for performing helmert transformation between
  *  osgb36 and wgs84 -1 * the values for the reverse transformation
+ *
  */
 const geo_helmert_constants osgb36_wgs84 = {
   446.448,
@@ -104,6 +106,11 @@ const geo_helmert_constants osgb36_wgs84 = {
 };
 
 #define GEO_DEG_TO_RAD 0.017453292519943295769236907684886
+
+#define F_0 0.9996012717
+#define N_0 -100000
+#define E_0 400000
+
 /**
  * Calculate the radius using WGS-84's equatorial radius of
  * 6,378,1370m
@@ -127,6 +134,7 @@ PHP_FUNCTION(cartesian_to_polar);
 PHP_FUNCTION(transform_datum);
 PHP_FUNCTION(dms_to_decimal);
 PHP_FUNCTION(decimal_to_dms);
+PHP_FUNCTION(coord_to_os_grid);
 
 #endif	/* PHP_GEOSPATIAL_H */
 

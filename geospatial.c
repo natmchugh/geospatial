@@ -74,6 +74,11 @@ ZEND_BEGIN_ARG_INFO_EX(decimal_to_dms_args, 0, 0, 2)
 	ZEND_ARG_INFO(0, coordinate)
 ZEND_END_ARG_INFO()
 
+ZEND_BEGIN_ARG_INFO_EX(coord_to_os_grid_args, 0, 0, 2)
+	ZEND_ARG_INFO(0, latitude)
+	ZEND_ARG_INFO(0, longitude)
+ZEND_END_ARG_INFO()
+
 /* {{{ geospatial_functions[]
  *
  * Every user visible function must have an entry in geospatial_functions[].
@@ -86,6 +91,7 @@ const zend_function_entry geospatial_functions[] = {
 	PHP_FE(transform_datum, transform_datum_args)
 	PHP_FE(dms_to_decimal, dms_to_decimal_args)
 	PHP_FE(decimal_to_dms, decimal_to_dms_args)
+	PHP_FE(coord_to_os_grid, coord_to_os_grid_args)
 	/* End of functions */
 	{ NULL, NULL, NULL }
 };
@@ -171,22 +177,22 @@ geo_helmert_constants get_helmert_constants(long from, long to)
 	}
 }
 
-geo_cartesian helmert(double x, double y, double z, geo_helmert_constants helmet_consts)
+geo_cartesian helmert(double x, double y, double z, geo_helmert_constants helmert_consts)
 {
 	double rX, rY, rZ;
 	double xOut, yOut, zOut;
 	double scale_change;
 	geo_cartesian point;
-	scale_change = 1 + (helmet_consts.scale_change);
-	rX = helmet_consts.rotation_x / GEO_SEC_IN_DEG * GEO_DEG_TO_RAD;
-	rY = helmet_consts.rotation_y / GEO_SEC_IN_DEG * GEO_DEG_TO_RAD;
-	rZ = helmet_consts.rotation_z / GEO_SEC_IN_DEG * GEO_DEG_TO_RAD;
+	scale_change = 1 + (helmert_consts.scale_change);
+	rX = helmert_consts.rotation_x / GEO_SEC_IN_DEG * GEO_DEG_TO_RAD;
+	rY = helmert_consts.rotation_y / GEO_SEC_IN_DEG * GEO_DEG_TO_RAD;
+	rZ = helmert_consts.rotation_z / GEO_SEC_IN_DEG * GEO_DEG_TO_RAD;
 
-	xOut = helmet_consts.translation_x + ((x - (rZ * y) + (rY * z)) * scale_change);
+	xOut = helmert_consts.translation_x + ((x - (rZ * y) + (rY * z)) * scale_change);
 
-	yOut =  helmet_consts.translation_y + (((rZ * x) + y - (rX * z)) * scale_change);
+	yOut =  helmert_consts.translation_y + (((rZ * x) + y - (rX * z)) * scale_change);
 
-	zOut = helmet_consts.translation_z + (((-1 * rY * x) + (rX * y) + z) * scale_change);
+	zOut = helmert_consts.translation_z + (((-1 * rY * x) + (rX * y) + z) * scale_change);
 
 	point.x = xOut;
 	point.y = yOut;
@@ -213,6 +219,10 @@ geo_cartesian polar_to_cartesian(double latitude, double longitude, geo_ellipsoi
 	point.y = y;
 	point.z = z;
 	return point;
+}
+
+double marc(double n, double Phi) {
+	return 42.0;
 }
 
 
@@ -363,6 +373,58 @@ PHP_FUNCTION(cartesian_to_polar)
 	add_assoc_double(return_value, "height", polar.height);
 }
 /* }}} */
+
+PHP_FUNCTION(coord_to_os_grid)
+{
+	double latitude, longitude;
+	double e2, n, nu, aF0, bF0, Phi, sinPhi, cosPhi, sinPhi2, tanPhi2, eta2;
+	double rho, M, I, II, III, IIIA,IV, V, VI;
+	bool returnIntermediateValues;
+	long eastings, northings;
+	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "dd|b", &latitude, &longitude, &returnIntermediateValues) == FAILURE) {
+		return;
+	}
+	e2 = (pow(airy_1830.a ,2) - pow(airy_1830.b, 2)) / pow(airy_1830.a, 2);
+	aF0 = airy_1830.a * F_0;
+	bF0 = airy_1830.b * F_0;
+	n = (aF0 - bF0) / (aF0 + bF0);
+	Phi = latitude * GEO_DEG_TO_RAD;
+	sinPhi2 = pow(sin(Phi), 2);
+	tanPhi2 = pow(tan(Phi), 2);
+	sinPhi = sin(Phi);
+	cosPhi = cos(Phi);
+	nu = aF0 / sqrt(1 - (e2 * sinPhi2));
+	rho = (nu * (1 - e2))/(1 - e2 * sinPhi2);
+	eta2 = nu / rho - 1;
+	M = marc(n, Phi);
+	I = M + N_0;
+	II = nu / 2 * sinPhi * cosPhi;
+	III = nu / 24 * sinPhi * pow(cosPhi, 3) * (5 - tanPhi2 + 9 * eta2);
+	IIIA = nu / 720 * sinPhi * pow(cosPhi, 5);
+	IV = nu * cos(Phi);
+	V = nu / 6 * pow(cosPhi, 3) * (nu / rho - tanPhi2);
+	VI = nu / 120 * pow(cosPhi, 5) * (5 - 18 * tanPhi2 + pow(tanPhi2, 2) + 14 * eta2 -58 * tanPhi2 * eta2);
+
+	array_init(return_value);
+
+	add_assoc_long(return_value, "eastings", eastings);
+	add_assoc_long(return_value, "northings", northings);
+	if (returnIntermediateValues) {
+		add_assoc_double(return_value, "e2", e2);
+		add_assoc_double(return_value, "n", n);
+		add_assoc_double(return_value, "aF0", aF0);
+		add_assoc_double(return_value, "nu", nu);
+		add_assoc_double(return_value, "rho", rho);
+		add_assoc_double(return_value, "eta2", eta2);
+		add_assoc_double(return_value, "M", M);
+		add_assoc_double(return_value, "I", I);
+		add_assoc_double(return_value, "II", II);
+		add_assoc_double(return_value, "III", III);
+		add_assoc_double(return_value, "IV", IV);
+		add_assoc_double(return_value, "V", V);
+		add_assoc_double(return_value, "VI", VI);
+	}
+}
 
 
 /* {{{ proto transform_datum(double latitude, double longitude, long from_reference_ellipsoid, long to_reference_ellipsoid)
