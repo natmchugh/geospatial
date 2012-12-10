@@ -2,12 +2,16 @@
 WGS84 of Ben Nevis to OS Grid Reference sheet
 --FILE--
 <?php
-// 56° 47′ 48.49″ N, 5° 0′ 21.62″ W
-$lat = dms_to_decimal(56, 47, 48.49, 'N');
-$long = dms_to_decimal(5, 0, 21.62, 'W');
-
-$airyBenNevis = transform_datum($lat, $long, GEO_WGS84, GEO_AIRY_1830);
-var_dump(coord_to_os_grid($airyBenNevis['lat'], $airyBenNevis['long']));
+$airyBenNevis = transform_datum(56.796556, -5.00393, GEO_WGS84, GEO_AIRY_1830);
+$eastingsNorthings = coord_to_eastings_northings($airyBenNevis['lat'], $airyBenNevis['long']);
+var_dump($eastingsNorthings);
+var_dump(os_grid_letters($eastingsNorthings['eastings'], $eastingsNorthings['northings']));
 ?>
 --EXPECT--
-NN166712
+array(2) {
+  ["eastings"]=>
+  float(216650.01955844)
+  ["northings"]=>
+  float(771249.94500687)
+}
+string(8) "NN166712"

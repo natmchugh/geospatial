@@ -2,17 +2,17 @@
 WGS84 of Sullom Voe to OS Grid Eastings and Northings
 --FILE--
 <?php
-// 56° 47′ 48.49″ N, 5° 0′ 21.62″ W
-$lat = dms_to_decimal(56, 47, 48.49, 'N');
-$long = dms_to_decimal(5, 0, 21.62, 'W');
-$airySollomVoe = transform_datum($lat, $long, GEO_WGS84, GEO_AIRY_1830);
-var_dump($airySollomVoe);
-var_dump(coord_to_os_grid($airySollomVoe['lat'], $airySollomVoe['long'], true));
+
+$airySollomVoe = transform_datum(60.459963, -1.280948, GEO_WGS84, GEO_AIRY_1830);
+$eastingsNorthings = coord_to_eastings_northings($airySollomVoe['lat'], $airySollomVoe['long'], true);
+var_dump(os_grid_letters($eastingsNorthings['eastings'], $eastingsNorthings['northings']));
+var_dump(os_grid_numeric($eastingsNorthings['eastings'], $eastingsNorthings['northings']));
 ?>
 --EXPECT--
+string(8) "HU396753"
 array(2) {
-  ["eastings"]=>
-  int(04396)
-  ["northings"]=>
-  int(11753)
+  [0]=>
+  string(5) "04396"
+  [1]=>
+  string(5) "11750"
 }

@@ -110,6 +110,8 @@ const geo_helmert_constants osgb36_wgs84 = {
 #define F_0 0.9996012717
 #define N_0 -100000
 #define E_0 400000
+#define PHI_0 0.855211333477221492692608476559414
+#define LAMDBA_0 -0.034906585039886591538473815369772
 
 /**
  * Calculate the radius using WGS-84's equatorial radius of
@@ -134,7 +136,9 @@ PHP_FUNCTION(cartesian_to_polar);
 PHP_FUNCTION(transform_datum);
 PHP_FUNCTION(dms_to_decimal);
 PHP_FUNCTION(decimal_to_dms);
-PHP_FUNCTION(coord_to_os_grid);
+PHP_FUNCTION(coord_to_eastings_northings);
+PHP_FUNCTION(os_grid_letters);
+PHP_FUNCTION(os_grid_numeric);
 
 #endif	/* PHP_GEOSPATIAL_H */
 

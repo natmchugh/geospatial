@@ -74,10 +74,21 @@ ZEND_BEGIN_ARG_INFO_EX(decimal_to_dms_args, 0, 0, 2)
 	ZEND_ARG_INFO(0, coordinate)
 ZEND_END_ARG_INFO()
 
-ZEND_BEGIN_ARG_INFO_EX(coord_to_os_grid_args, 0, 0, 2)
+ZEND_BEGIN_ARG_INFO_EX(coord_to_eastings_northings_args, 0, 0, 2)
 	ZEND_ARG_INFO(0, latitude)
 	ZEND_ARG_INFO(0, longitude)
 ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_INFO_EX(os_grid_letters_args, 0, 0, 2)
+	ZEND_ARG_INFO(0, eastings)
+	ZEND_ARG_INFO(0, northings)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_INFO_EX(os_grid_numeric_args, 0, 0, 2)
+	ZEND_ARG_INFO(0, eastings)
+	ZEND_ARG_INFO(0, northings)
+ZEND_END_ARG_INFO()
+
 
 /* {{{ geospatial_functions[]
  *
@@ -91,7 +102,9 @@ const zend_function_entry geospatial_functions[] = {
 	PHP_FE(transform_datum, transform_datum_args)
 	PHP_FE(dms_to_decimal, dms_to_decimal_args)
 	PHP_FE(decimal_to_dms, decimal_to_dms_args)
-	PHP_FE(coord_to_os_grid, coord_to_os_grid_args)
+	PHP_FE(coord_to_eastings_northings, coord_to_eastings_northings_args)
+	PHP_FE(os_grid_letters, os_grid_letters_args)
+	PHP_FE(os_grid_numeric, os_grid_numeric_args)
 	/* End of functions */
 	{ NULL, NULL, NULL }
 };
@@ -221,8 +234,22 @@ geo_cartesian polar_to_cartesian(double latitude, double longitude, geo_ellipsoi
 	return point;
 }
 
-double marc(double n, double Phi) {
-	return 42.0;
+double meridional_arc(double Phi) {
+	double sum, difference;
+	double aF0, bF0, n;
+	double A, B, C, D;
+
+	aF0 = airy_1830.a * F_0;
+	bF0 = airy_1830.b * F_0;
+	n = (aF0 - bF0) / (aF0 + bF0);
+	sum = Phi + PHI_0;
+	difference = Phi - PHI_0;
+
+	A = (1 + n + 5.0 / 4.0 * pow(n, 2) + 5.0 / 4.0 * pow(n, 3)) * difference;
+	B = (3 * n + 3 * pow(n, 2)  + 21.0 / 8.0 * pow(n, 3))  * sin(difference) * cos(sum);
+	C = (15.0 / 8.0 * pow(n, 2) + 15.0 / 8.0 * pow(n, 3)) * sin(2 * difference) * cos(2 * sum);
+	D = 35.0 / 24.0 * pow(n, 3) * sin(3 * difference) * cos(3 * sum);
+	return bF0 * (A - B + C - D);
 }
 
 
@@ -374,44 +401,94 @@ PHP_FUNCTION(cartesian_to_polar)
 }
 /* }}} */
 
-PHP_FUNCTION(coord_to_os_grid)
+PHP_FUNCTION(os_grid_letters)
+{
+	double eastings, northings;
+	int hundredsKmNorth, hundredsKmEast, vertical500Count, horizontal500Count;
+	int firstKey, secondKey, top, left, verticalCount, horizotalCount;
+	int remainderEast, remainderNorth, numberFigures = 6;
+	char letters[] = "ABCDEFGHJKLMNOPQRSTUVWXZ", gridLetters[2];
+	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "dd|l", &eastings, &northings, &numberFigures) == FAILURE) {
+		return;
+	}
+	hundredsKmNorth = floor(northings / 100000);
+	vertical500Count = floor(hundredsKmNorth / 5);
+	hundredsKmEast = floor(eastings / 100000);
+	horizontal500Count = floor(hundredsKmEast / 5);
+	firstKey = horizontal500Count +2 + 5* (3 - vertical500Count);
+	top = 5*(vertical500Count+1);
+	left = 5 * horizontal500Count;
+	verticalCount = top - hundredsKmNorth - 1;
+	horizotalCount = hundredsKmEast - left;
+	secondKey = verticalCount * 5 + horizotalCount;
+	if (8 == numberFigures) {
+		remainderEast = ((int) eastings ) / 10 % 10000;
+		remainderNorth = ((int) northings ) /10 % 10000;
+		sprintf(gridLetters, "%c%c%4d%4d", letters[firstKey], letters[secondKey], remainderEast, remainderNorth);
+		RETVAL_STRINGL(gridLetters, 10, 1);
+	}	else {
+		remainderEast = ((int) eastings ) / 100 % 1000;
+		remainderNorth = ((int) northings ) /100 % 1000;
+		sprintf(gridLetters, "%c%c%3d%3d", letters[firstKey], letters[secondKey], remainderEast, remainderNorth);
+		RETVAL_STRINGL(gridLetters, 8, 1);
+	}
+	return;
+}
+
+PHP_FUNCTION(os_grid_numeric)
+{
+	double eastings, northings;
+	char east[4], north[4];
+	int length;
+	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "dd", &eastings, &northings) == FAILURE) {
+		return;
+	}
+	array_init(return_value);
+	sprintf(north, "%05d", ((int) northings / 100));
+	sprintf(east, "%05d", ((int) eastings / 100));
+	add_next_index_stringl(return_value, east, 5, 1);
+	add_next_index_stringl(return_value, north, 5, 1);
+}
+
+PHP_FUNCTION(coord_to_eastings_northings)
 {
 	double latitude, longitude;
-	double e2, n, nu, aF0, bF0, Phi, sinPhi, cosPhi, sinPhi2, tanPhi2, eta2;
-	double rho, M, I, II, III, IIIA,IV, V, VI;
+	double e2, n, nu, aF0, bF0, Phi, Lambda, sinPhi, cosPhi, sinPhi2, tanPhi2, eta2;
+	double rho, M, I, II, III, IIIA,IV, V, VI, P;
 	bool returnIntermediateValues;
-	long eastings, northings;
+	double eastings, northings;
 	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "dd|b", &latitude, &longitude, &returnIntermediateValues) == FAILURE) {
 		return;
 	}
 	e2 = (pow(airy_1830.a ,2) - pow(airy_1830.b, 2)) / pow(airy_1830.a, 2);
 	aF0 = airy_1830.a * F_0;
-	bF0 = airy_1830.b * F_0;
-	n = (aF0 - bF0) / (aF0 + bF0);
 	Phi = latitude * GEO_DEG_TO_RAD;
-	sinPhi2 = pow(sin(Phi), 2);
-	tanPhi2 = pow(tan(Phi), 2);
+	Lambda = longitude * GEO_DEG_TO_RAD;
 	sinPhi = sin(Phi);
 	cosPhi = cos(Phi);
+	sinPhi2 = pow(sinPhi, 2);
+	tanPhi2 = pow(tan(Phi), 2);
 	nu = aF0 / sqrt(1 - (e2 * sinPhi2));
 	rho = (nu * (1 - e2))/(1 - e2 * sinPhi2);
 	eta2 = nu / rho - 1;
-	M = marc(n, Phi);
+	M = meridional_arc(Phi);
 	I = M + N_0;
 	II = nu / 2 * sinPhi * cosPhi;
 	III = nu / 24 * sinPhi * pow(cosPhi, 3) * (5 - tanPhi2 + 9 * eta2);
-	IIIA = nu / 720 * sinPhi * pow(cosPhi, 5);
+	IIIA = nu / 720 * sinPhi * pow(cosPhi, 5) * (61 - 58 * tanPhi2 + pow(tanPhi2, 2));
 	IV = nu * cos(Phi);
 	V = nu / 6 * pow(cosPhi, 3) * (nu / rho - tanPhi2);
 	VI = nu / 120 * pow(cosPhi, 5) * (5 - 18 * tanPhi2 + pow(tanPhi2, 2) + 14 * eta2 -58 * tanPhi2 * eta2);
+	P = Lambda - LAMDBA_0;
+	northings = I + II * pow(P, 2) + III * pow(P, 4) + IIIA * pow(P, 6);
+	eastings =  E_0 + IV * P + V * pow(P, 3) + VI * pow(P, 5);
 
 	array_init(return_value);
 
-	add_assoc_long(return_value, "eastings", eastings);
-	add_assoc_long(return_value, "northings", northings);
+	add_assoc_double(return_value, "eastings", eastings);
+	add_assoc_double(return_value, "northings", northings);
 	if (returnIntermediateValues) {
 		add_assoc_double(return_value, "e2", e2);
-		add_assoc_double(return_value, "n", n);
 		add_assoc_double(return_value, "aF0", aF0);
 		add_assoc_double(return_value, "nu", nu);
 		add_assoc_double(return_value, "rho", rho);
@@ -420,6 +497,7 @@ PHP_FUNCTION(coord_to_os_grid)
 		add_assoc_double(return_value, "I", I);
 		add_assoc_double(return_value, "II", II);
 		add_assoc_double(return_value, "III", III);
+		add_assoc_double(return_value, "IIIA", IIIA);
 		add_assoc_double(return_value, "IV", IV);
 		add_assoc_double(return_value, "V", V);
 		add_assoc_double(return_value, "VI", VI);
