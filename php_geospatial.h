@@ -67,6 +67,16 @@ typedef struct {
   double rotation_z;
 } geo_helmert_constants;
 
+
+typedef struct
+{
+  double e2;
+  double aF0;
+  double nu;
+  double rho;
+  double eta2;
+} geo_eta2;
+
 /**
  *  The WGS84 elipsoid semi major axes
  */
