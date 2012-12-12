@@ -438,14 +438,14 @@ PHP_FUNCTION(os_grid_letters)
 PHP_FUNCTION(os_grid_numeric)
 {
 	double eastings, northings;
-	char east[4], north[4];
+	char east[5], north[5];
 	int length;
 	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "dd", &eastings, &northings) == FAILURE) {
 		return;
 	}
 	array_init(return_value);
-	sprintf(north, "%05d", ((int) northings / 100));
-	sprintf(east, "%05d", ((int) eastings / 100));
+	sprintf(north, "%05d", (int) (northings / 100));
+	sprintf(east, "%05d", (int) (eastings / 100));
 	add_next_index_stringl(return_value, east, 5, 1);
 	add_next_index_stringl(return_value, north, 5, 1);
 }
