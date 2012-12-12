@@ -137,6 +137,7 @@ PHP_FUNCTION(transform_datum);
 PHP_FUNCTION(dms_to_decimal);
 PHP_FUNCTION(decimal_to_dms);
 PHP_FUNCTION(coord_to_eastings_northings);
+PHP_FUNCTION(eastings_northings_to_coords);
 PHP_FUNCTION(os_grid_letters);
 PHP_FUNCTION(os_grid_numeric);
 

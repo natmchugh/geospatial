@@ -74,9 +74,10 @@ ZEND_BEGIN_ARG_INFO_EX(decimal_to_dms_args, 0, 0, 2)
 	ZEND_ARG_INFO(0, coordinate)
 ZEND_END_ARG_INFO()
 
-ZEND_BEGIN_ARG_INFO_EX(coord_to_eastings_northings_args, 0, 0, 2)
+ZEND_BEGIN_ARG_INFO_EX(coord_to_eastings_northings_args, 0, 0, 3)
 	ZEND_ARG_INFO(0, latitude)
 	ZEND_ARG_INFO(0, longitude)
+	ZEND_ARG_INFO(0, returnIntermediateValues)
 ZEND_END_ARG_INFO()
 
 ZEND_BEGIN_ARG_INFO_EX(os_grid_letters_args, 0, 0, 2)
@@ -89,6 +90,11 @@ ZEND_BEGIN_ARG_INFO_EX(os_grid_numeric_args, 0, 0, 2)
 	ZEND_ARG_INFO(0, northings)
 ZEND_END_ARG_INFO()
 
+ZEND_BEGIN_ARG_INFO_EX(eastings_northings_to_coords_args, 0, 0, 3)
+	ZEND_ARG_INFO(0, eastings)
+	ZEND_ARG_INFO(0, northings)
+	ZEND_ARG_INFO(0, returnIntermediateValues)
+ZEND_END_ARG_INFO()
 
 /* {{{ geospatial_functions[]
  *
@@ -103,6 +109,7 @@ const zend_function_entry geospatial_functions[] = {
 	PHP_FE(dms_to_decimal, dms_to_decimal_args)
 	PHP_FE(decimal_to_dms, decimal_to_dms_args)
 	PHP_FE(coord_to_eastings_northings, coord_to_eastings_northings_args)
+	PHP_FE(eastings_northings_to_coords, eastings_northings_to_coords_args)
 	PHP_FE(os_grid_letters, os_grid_letters_args)
 	PHP_FE(os_grid_numeric, os_grid_numeric_args)
 	/* End of functions */
@@ -311,31 +318,36 @@ PHP_FUNCTION(dms_to_decimal)
  * Convert decimal degrees value to whole degrees and minutes and decimal seconds */
 PHP_FUNCTION(decimal_to_dms)
 {
-	double decimal, seconds;
+	double decimal, seconds, absoluteDecimal;
 	int degrees, minutes;
 	char *direction;
 	char *coordinate;
-	int coordinate_len;
+	int coordinate_len = 0;
 
-	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "ds", &decimal, &coordinate, &coordinate_len) == FAILURE) {
+	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "d|s", &decimal, &coordinate, &coordinate_len) == FAILURE) {
 		return;
 	}
-
-	if (strcmp(coordinate, "longitude") == 0) {
-		direction = decimal < 1 ? "W" : "E";
+	absoluteDecimal = fabs(decimal);
+	if (coordinate_len > 0) {
+		if (strcmp(coordinate, "longitude") == 0) {
+			direction = decimal < 1 ? "W" : "E";
+		} else {
+			direction = decimal < 1 ? "S" : "N";
+		}
+		degrees = (int) absoluteDecimal;
 	} else {
-		direction = decimal < 1 ? "S" : "N";
+		degrees = (int) decimal;
 	}
 
 	array_init(return_value);
-	decimal = fabs(decimal);
-	degrees = (int) decimal;
-	minutes = decimal * 60 - degrees * 60;
-	seconds = decimal * 3600 - degrees * 3600 - minutes * 60;
+	minutes = absoluteDecimal * 60 - abs(degrees) * 60;
+	seconds = absoluteDecimal * 3600 - abs(degrees) * 3600 - minutes * 60;
 	add_assoc_long(return_value, "degrees", degrees);
 	add_assoc_long(return_value, "minutes", minutes);
 	add_assoc_double(return_value, "seconds", seconds);
-	add_assoc_string(return_value, "direction", direction, 1);
+	if (coordinate_len > 0) {
+		add_assoc_string(return_value, "direction", direction, 1);
+	}
 }
 /* }}} */
 
@@ -448,6 +460,62 @@ PHP_FUNCTION(os_grid_numeric)
 	sprintf(east, "%05d", (int) (eastings / 100));
 	add_next_index_stringl(return_value, east, 5, 1);
 	add_next_index_stringl(return_value, north, 5, 1);
+}
+
+PHP_FUNCTION(eastings_northings_to_coords)
+{
+	double eastings, northings, difference;
+	double latitude, longitude;
+	double e2, nu, rho, eta2, phiDerivative, aF0;
+	double sinPhi, tanPhi, cosPhi, sinPhi2, tanPhi2;
+	double M, VII, VIII, VIIII, IX, X, XI, XII, XIIA;
+	bool returnIntermediateValues;
+	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "dd|b", &eastings, &northings, &returnIntermediateValues) == FAILURE) {
+		return;
+	}
+	aF0 = airy_1830.a * F_0;
+	e2 = (pow(airy_1830.a ,2) - pow(airy_1830.b, 2)) / pow(airy_1830.a, 2);
+	M = 0;
+	difference = eastings - E_0;
+	phiDerivative = PHI_0;
+	while ((northings - N_0 - M) >= 0.0001) {
+		phiDerivative = (northings - N_0 - M) / aF0 + phiDerivative;
+		M = meridional_arc(phiDerivative);
+	}
+	sinPhi = sin(phiDerivative);
+	cosPhi = cos(phiDerivative);
+	sinPhi2 = pow(sinPhi, 2);
+	tanPhi = tan(phiDerivative);
+	tanPhi2 = pow(tanPhi, 2);
+	nu = aF0 / sqrt(1 - (e2 * sinPhi2));
+	rho = (nu * (1 - e2))/(1 - e2 * sinPhi2);
+	eta2 = nu / rho - 1;
+	VII = tanPhi / (2 * rho * nu);
+	VIII = tanPhi  / (24 * rho * pow(nu, 3)) * (5 + 3 * tanPhi2 + eta2 - 9 * tanPhi2 * eta2);
+	IX = tanPhi / (720 * rho * pow(nu, 5)) * (61 + 90 * tanPhi2 + 45 * pow(tanPhi2, 2));
+	X = 1 / (cosPhi * nu);
+	XI = 1 / (cosPhi * 6 * pow(nu, 3)) * (nu / rho + 2 * tanPhi2);
+	XII = 1 / (cosPhi * 120 * pow(nu, 5)) * (5 + 28 * tanPhi2 + 24 * pow(tanPhi2, 2));
+	XIIA = 1 / (cosPhi * 5040 * pow(nu, 7)) * (61 + 662 * tanPhi2 + 1320 * pow(tanPhi2, 2) + 720 * pow(tanPhi ,6));
+	latitude = phiDerivative - VII * pow(difference, 2) + VIII * pow(difference, 4) - IX * pow(difference, 6);
+	longitude = LAMDBA_0 + X * difference - XI * pow(difference, 3) + XII * pow(difference, 5) - XIIA * pow(difference, 7);
+	array_init(return_value);
+	if (returnIntermediateValues) {
+		add_assoc_double(return_value, "latitude", latitude  / GEO_DEG_TO_RAD);
+		add_assoc_double(return_value, "longitude", longitude  / GEO_DEG_TO_RAD);
+		add_assoc_double(return_value, "phiDerivative", phiDerivative);
+		add_assoc_double(return_value, "M", M);
+		add_assoc_double(return_value, "nu", nu);
+		add_assoc_double(return_value, "rho", rho);
+		add_assoc_double(return_value, "eta2", eta2);
+		add_assoc_double(return_value, "VII", VII);
+		add_assoc_double(return_value, "VIII", VIII);
+		add_assoc_double(return_value, "IX", IX);
+		add_assoc_double(return_value, "X", X);
+		add_assoc_double(return_value, "XI", XI);
+		add_assoc_double(return_value, "XII", XII);
+		add_assoc_double(return_value, "XIIA", XIIA);
+	}
 }
 
 PHP_FUNCTION(coord_to_eastings_northings)

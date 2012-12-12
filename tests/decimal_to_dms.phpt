@@ -9,6 +9,9 @@ var_dump($dms);
 $dms = decimal_to_dms(-1.034291666667, 'latitude');
 var_dump($dms);
 
+$dms = decimal_to_dms(-1.034291666667);
+var_dump($dms);
+
 --EXPECT--
 array(4) {
   ["degrees"]=>
@@ -29,4 +32,12 @@ array(4) {
   float(3.4500000011994)
   ["direction"]=>
   string(1) "S"
+}
+array(3) {
+  ["degrees"]=>
+  int(-1)
+  ["minutes"]=>
+  int(2)
+  ["seconds"]=>
+  float(3.4500000011994)
 }
