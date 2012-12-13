@@ -77,6 +77,37 @@ typedef struct
   double eta2;
 } geo_eta2;
 
+typedef struct
+{
+  geo_eta2 eta2;
+  double M;
+  double I;
+  double II;
+  double III;
+  double IIIA;
+  double IV;
+  double V;
+  double VI;
+  double eastings;
+  double northings;
+} eastings_northings_calculation;
+
+typedef struct
+{
+  geo_eta2 eta2;
+  double phiDerivative;
+  double M;
+  double VII;
+  double VIII;
+  double IX;
+  double X;
+  double XI;
+  double XII;
+  double XIIA;
+  double latitude;
+  double longitude;
+} coords_calculation;
+
 /**
  *  The WGS84 elipsoid semi major axes
  */

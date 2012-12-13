@@ -475,21 +475,16 @@ geo_eta2 eta_sq(double Phi)
 	geo_eta2 etaSq = {e2, aF0, nu, rho, eta2};
 	return etaSq;
 }
-
-PHP_FUNCTION(eastings_northings_to_coords)
+coords_calculation eastings_northings_to_coords(double eastings, double northings)
 {
-	double eastings, northings, difference;
-	double latitude, longitude, phiDerivative;
-	double tanPhi, cosPhi, tanPhi2, aF0;
-	double M, VII, VIII, VIIII, IX, X, XI, XII, XIIA;
+	double latitude, longitude, phiDerivative, difference;
+	double tanPhi, cosPhi, tanPhi2, aF0, M;
+	coords_calculation p;
 	geo_eta2 eta2;
-	bool returnIntermediateValues;
+
 	aF0 = airy_1830.a * F_0;
-	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "dd|b", &eastings, &northings, &returnIntermediateValues) == FAILURE) {
-		return;
-	}
-	M = 0;
 	difference = eastings - E_0;
+	M = 0;
 	phiDerivative = PHI_0;
 	while ((northings - N_0 - M) >= 0.0001) {
 		phiDerivative = (northings - N_0 - M) / aF0 + phiDerivative;
@@ -498,84 +493,115 @@ PHP_FUNCTION(eastings_northings_to_coords)
 	cosPhi = cos(phiDerivative);
 	tanPhi = tan(phiDerivative);
 	tanPhi2 = pow(tanPhi, 2);
-
 	eta2 = eta_sq(phiDerivative);
-	VII = tanPhi / (2 * eta2.rho * eta2.nu);
-	VIII = tanPhi  / (24 * eta2.rho * pow(eta2.nu, 3)) * (5 + 3 * tanPhi2 + eta2.eta2 - 9 * tanPhi2 * eta2.eta2);
-	IX = tanPhi / (720 * eta2.rho * pow(eta2.nu, 5)) * (61 + 90 * tanPhi2 + 45 * pow(tanPhi2, 2));
-	X = 1 / (cosPhi * eta2.nu);
-	XI = 1 / (cosPhi * 6 * pow(eta2.nu, 3)) * (eta2.nu / eta2.rho + 2 * tanPhi2);
-	XII = 1 / (cosPhi * 120 * pow(eta2.nu, 5)) * (5 + 28 * tanPhi2 + 24 * pow(tanPhi2, 2));
-	XIIA = 1 / (cosPhi * 5040 * pow(eta2.nu, 7)) * (61 + 662 * tanPhi2 + 1320 * pow(tanPhi2, 2) + 720 * pow(tanPhi ,6));
-	latitude = phiDerivative - VII * pow(difference, 2) + VIII * pow(difference, 4) - IX * pow(difference, 6);
-	longitude = LAMDBA_0 + X * difference - XI * pow(difference, 3) + XII * pow(difference, 5) - XIIA * pow(difference, 7);
+
+	p.phiDerivative = phiDerivative;
+	p.eta2 = eta2;
+	p.M = M;
+
+	p.VII = tanPhi / (2 * eta2.rho * eta2.nu);
+	p.VIII = tanPhi  / (24 * eta2.rho * pow(eta2.nu, 3)) * (5 + 3 * tanPhi2 + eta2.eta2 - 9 * tanPhi2 * eta2.eta2);
+	p.IX = tanPhi / (720 * eta2.rho * pow(eta2.nu, 5)) * (61 + 90 * tanPhi2 + 45 * pow(tanPhi2, 2));
+	p.X = 1 / (cosPhi * eta2.nu);
+	p.XI = 1 / (cosPhi * 6 * pow(eta2.nu, 3)) * (eta2.nu / eta2.rho + 2 * tanPhi2);
+	p.XII = 1 / (cosPhi * 120 * pow(eta2.nu, 5)) * (5 + 28 * tanPhi2 + 24 * pow(tanPhi2, 2));
+	p.XIIA = 1 / (cosPhi * 5040 * pow(eta2.nu, 7)) * (61 + 662 * tanPhi2 + 1320 * pow(tanPhi2, 2) + 720 * pow(tanPhi ,6));
+	p.latitude = phiDerivative - p.VII * pow(difference, 2) + p.VIII * pow(difference, 4) - p.IX * pow(difference, 6);
+	p.longitude = LAMDBA_0 + p.X * difference - p.XI * pow(difference, 3) + p.XII * pow(difference, 5) - p.XIIA * pow(difference, 7);
+	return p;
+}
+
+
+PHP_FUNCTION(eastings_northings_to_coords)
+{
+	double eastings, northings;
+	geo_eta2 eta2;
+	bool returnIntermediateValues;
+	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "dd|b", &eastings, &northings, &returnIntermediateValues) == FAILURE) {
+		return;
+	}
+
+	coords_calculation coords = eastings_northings_to_coords(eastings, northings);
+	eta2 = coords.eta2;
+
 	array_init(return_value);
-	add_assoc_double(return_value, "latitude", latitude  / GEO_DEG_TO_RAD);
-	add_assoc_double(return_value, "longitude", longitude  / GEO_DEG_TO_RAD);
+	add_assoc_double(return_value, "latitude", coords.latitude  / GEO_DEG_TO_RAD);
+	add_assoc_double(return_value, "longitude", coords.longitude  / GEO_DEG_TO_RAD);
 	if (returnIntermediateValues) {
-		add_assoc_double(return_value, "phiDerivative", phiDerivative);
-		add_assoc_double(return_value, "M", M);
+		add_assoc_double(return_value, "phiDerivative", coords.phiDerivative);
+		add_assoc_double(return_value, "M", coords.M);
 		add_assoc_double(return_value, "nu", eta2.nu);
 		add_assoc_double(return_value, "rho", eta2.rho);
 		add_assoc_double(return_value, "eta2", eta2.eta2);
-		add_assoc_double(return_value, "VII", VII);
-		add_assoc_double(return_value, "VIII", VIII);
-		add_assoc_double(return_value, "IX", IX);
-		add_assoc_double(return_value, "X", X);
-		add_assoc_double(return_value, "XI", XI);
-		add_assoc_double(return_value, "XII", XII);
-		add_assoc_double(return_value, "XIIA", XIIA);
+		add_assoc_double(return_value, "VII", coords.VII);
+		add_assoc_double(return_value, "VIII", coords.VIII);
+		add_assoc_double(return_value, "IX", coords.IX);
+		add_assoc_double(return_value, "X", coords.X);
+		add_assoc_double(return_value, "XI", coords.XI);
+		add_assoc_double(return_value, "XII", coords.XII);
+		add_assoc_double(return_value, "XIIA", coords.XIIA);
 	}
+}
+
+eastings_northings_calculation coord_to_eastings_northings(double Phi, double Lambda)
+{
+
+	double n, bF0, sinPhi, cosPhi, tanPhi2;
+	double rho, M, I, II, III, IIIA,IV, V, VI, P;
+	geo_eta2 eta2;
+
+	sinPhi = sin(Phi);
+	cosPhi = cos(Phi);
+	tanPhi2 = pow(tan(Phi), 2);
+
+	eastings_northings_calculation results;
+	eta2 = eta_sq(Phi);
+	results.M = meridional_arc(Phi);
+	results.I = results.M + N_0;
+	results.II = eta2.nu / 2 * sinPhi * cosPhi;
+	results.III = eta2.nu / 24 * sinPhi * pow(cosPhi, 3) * (5 - tanPhi2 + 9 * eta2.eta2);
+	results.IIIA = eta2.nu / 720 * sinPhi * pow(cosPhi, 5) * (61 - 58 * tanPhi2 + pow(tanPhi2, 2));
+	results.IV = eta2.nu * cos(Phi);
+	results.V = eta2.nu / 6 * pow(cosPhi, 3) * (eta2.nu / eta2.rho - tanPhi2);
+	results.VI = eta2.nu / 120 * pow(cosPhi, 5) * (5 - 18 * tanPhi2 + pow(tanPhi2, 2) + 14 * eta2.eta2 -58 * tanPhi2 * eta2.eta2);
+	results.eta2 = eta2;
+	P = Lambda - LAMDBA_0;
+	results.northings = results.I + results.II * pow(P, 2) + results.III * pow(P, 4) + results.IIIA * pow(P, 6);
+	results.eastings =  E_0 + results.IV * P + results.V * pow(P, 3) + results.VI * pow(P, 5);
+	return results;
 }
 
 PHP_FUNCTION(coord_to_eastings_northings)
 {
 	double latitude, longitude;
-	double n, bF0, Phi, Lambda, sinPhi, cosPhi, tanPhi2;
-	double rho, M, I, II, III, IIIA,IV, V, VI, P;
+	double Phi, Lambda;
 	bool returnIntermediateValues;
-	double eastings, northings;
 	geo_eta2 eta2;
 	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "dd|b", &latitude, &longitude, &returnIntermediateValues) == FAILURE) {
 		return;
 	}
 	Phi = latitude * GEO_DEG_TO_RAD;
 	Lambda = longitude * GEO_DEG_TO_RAD;
-	sinPhi = sin(Phi);
-	cosPhi = cos(Phi);
-	tanPhi2 = pow(tan(Phi), 2);
-
-	eta2 = eta_sq(Phi);
-	M = meridional_arc(Phi);
-	I = M + N_0;
-	II = eta2.nu / 2 * sinPhi * cosPhi;
-	III = eta2.nu / 24 * sinPhi * pow(cosPhi, 3) * (5 - tanPhi2 + 9 * eta2.eta2);
-	IIIA = eta2.nu / 720 * sinPhi * pow(cosPhi, 5) * (61 - 58 * tanPhi2 + pow(tanPhi2, 2));
-	IV = eta2.nu * cos(Phi);
-	V = eta2.nu / 6 * pow(cosPhi, 3) * (eta2.nu / eta2.rho - tanPhi2);
-	VI = eta2.nu / 120 * pow(cosPhi, 5) * (5 - 18 * tanPhi2 + pow(tanPhi2, 2) + 14 * eta2.eta2 -58 * tanPhi2 * eta2.eta2);
-	P = Lambda - LAMDBA_0;
-	northings = I + II * pow(P, 2) + III * pow(P, 4) + IIIA * pow(P, 6);
-	eastings =  E_0 + IV * P + V * pow(P, 3) + VI * pow(P, 5);
-
+	eastings_northings_calculation east_north = coord_to_eastings_northings(Phi, Lambda);
+	eta2 = east_north.eta2;
 	array_init(return_value);
 
-	add_assoc_double(return_value, "eastings", eastings);
-	add_assoc_double(return_value, "northings", northings);
+	add_assoc_double(return_value, "eastings", east_north.eastings);
+	add_assoc_double(return_value, "northings", east_north.northings);
 	if (returnIntermediateValues) {
 		add_assoc_double(return_value, "e2", eta2.e2);
 		add_assoc_double(return_value, "aF0", eta2.aF0);
 		add_assoc_double(return_value, "nu", eta2.nu);
 		add_assoc_double(return_value, "rho", eta2.rho);
 		add_assoc_double(return_value, "eta2", eta2.eta2);
-		add_assoc_double(return_value, "M", M);
-		add_assoc_double(return_value, "I", I);
-		add_assoc_double(return_value, "II", II);
-		add_assoc_double(return_value, "III", III);
-		add_assoc_double(return_value, "IIIA", IIIA);
-		add_assoc_double(return_value, "IV", IV);
-		add_assoc_double(return_value, "V", V);
-		add_assoc_double(return_value, "VI", VI);
+		add_assoc_double(return_value, "M", east_north.M);
+		add_assoc_double(return_value, "I", east_north.I);
+		add_assoc_double(return_value, "II", east_north.II);
+		add_assoc_double(return_value, "III", east_north.III);
+		add_assoc_double(return_value, "IIIA", east_north.IIIA);
+		add_assoc_double(return_value, "IV", east_north.IV);
+		add_assoc_double(return_value, "V", east_north.V);
+		add_assoc_double(return_value, "VI", east_north.VI);
 	}
 }
 
