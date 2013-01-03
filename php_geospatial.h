@@ -36,16 +36,19 @@ extern zend_module_entry geospatial_module_entry;
 #include "TSRM.h"
 #endif
 
-typedef struct {
-   double   latitude;
-   double   longitude;
-   double   height;
-} geo_lat_long;
 
 typedef struct {
    double    a;
    double    b;
+   zend_object std;
 } geo_ellipsoid;
+
+typedef struct {
+   double   latitude;
+   double   longitude;
+   double   height;
+
+} geo_lat_long;
 
 typedef struct {
   double x;
@@ -181,8 +184,15 @@ PHP_FUNCTION(coord_to_eastings_northings);
 PHP_FUNCTION(eastings_northings_to_coords);
 PHP_FUNCTION(os_grid_letters);
 PHP_FUNCTION(os_grid_numeric);
+PHP_METHOD(LatLong, __construct);
+PHP_METHOD(LatLong, getHaversineDistance);
+PHP_METHOD(LatLong, transformDatum);
 
 #endif	/* PHP_GEOSPATIAL_H */
+
+zend_object_value create_ellipsoid(zend_class_entry *class_type TSRMLS_DC);
+void free_ellipsoid(void *object TSRMLS_DC);
+
 
 /*
  * Local variables:

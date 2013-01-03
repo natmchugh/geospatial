@@ -19,6 +19,7 @@
 
 /* $Id$ */
 
+
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
@@ -27,6 +28,8 @@
 #include "php_ini.h"
 #include "ext/standard/info.h"
 #include "php_geospatial.h"
+
+zend_class_entry *php_geospatial_fc_entry;
 
 ZEND_BEGIN_ARG_INFO_EX(haversine_args, 0, 0, 4)
 	ZEND_ARG_INFO(0, fromLatitude)
@@ -100,7 +103,11 @@ ZEND_END_ARG_INFO()
  *
  * Every user visible function must have an entry in geospatial_functions[].
  */
+#define PHP_GEOSPATIAL_FC_NAME "LatLong"
 const zend_function_entry geospatial_functions[] = {
+	PHP_ME(LatLong, __construct, NULL, ZEND_ACC_PUBLIC|ZEND_ACC_CTOR)
+	PHP_ME(LatLong, getHaversineDistance, NULL, ZEND_ACC_PUBLIC)
+	PHP_ME(LatLong, transformDatum, NULL, ZEND_ACC_PUBLIC)
 	PHP_FE(haversine, haversine_args)
 	PHP_FE(helmert, helmert_args)
 	PHP_FE(polar_to_cartesian, polar_to_cartesian_args)
@@ -116,6 +123,7 @@ const zend_function_entry geospatial_functions[] = {
 	{ NULL, NULL, NULL }
 };
 /* }}} */
+
 
 /* {{{ geospatial_module_entry
  */
@@ -145,6 +153,12 @@ ZEND_GET_MODULE(geospatial)
  */
 PHP_MINIT_FUNCTION(geospatial)
 {
+	 zend_class_entry ce;
+      INIT_CLASS_ENTRY(ce, PHP_GEOSPATIAL_FC_NAME,
+                       geospatial_functions);
+      php_geospatial_fc_entry =
+            zend_register_internal_class(&ce TSRMLS_CC);
+      // php_geospatial_fc_entry->create_object = create_ellipsoid;
 	REGISTER_DOUBLE_CONSTANT("GEO_DEG_TO_RAD", GEO_DEG_TO_RAD, CONST_CS | CONST_PERSISTENT);
 	REGISTER_DOUBLE_CONSTANT("GEO_EARTH_RADIUS", GEO_EARTH_RADIUS, CONST_CS | CONST_PERSISTENT);
 	REGISTER_LONG_CONSTANT("GEO_AIRY_1830", GEO_AIRY_1830, CONST_CS | CONST_PERSISTENT);
@@ -170,6 +184,35 @@ PHP_MINFO_FUNCTION(geospatial)
 	php_info_print_table_end();
 }
 /* }}} */
+
+zend_object_value create_ellipsoid(zend_class_entry *class_type TSRMLS_DC) {
+  zend_object_value retval;
+  geo_ellipsoid *intern;
+  zval *tmp;
+
+  // allocate the struct we're going to use
+  intern = (geo_ellipsoid*)emalloc(sizeof(geo_ellipsoid));
+  memset(intern, 0, sizeof(geo_ellipsoid));
+
+  // // create a table for class properties
+  zend_object_std_init(&intern->std, class_type TSRMLS_CC);
+
+  // // create a destructor for this struct
+  retval.handle = zend_objects_store_put(intern, (zend_objects_store_dtor_t) zend_objects_destroy_object, free_ellipsoid, NULL TSRMLS_CC);
+  retval.handlers = zend_get_std_object_handlers();
+
+  return retval;
+}
+
+void free_ellipsoid(void *object TSRMLS_DC) {
+
+  geo_ellipsoid *ellipsoid = (geo_ellipsoid*)object;
+  zend_hash_destroy(ellipsoid->std.properties);
+  FREE_HASHTABLE(ellipsoid->std.properties);
+
+  efree(ellipsoid);
+}
+
 
 geo_ellipsoid get_ellipsoid(long ellipsoid_const)
 {
@@ -197,7 +240,7 @@ geo_helmert_constants get_helmert_constants(long from, long to)
 	}
 }
 
-geo_cartesian helmert(double x, double y, double z, geo_helmert_constants helmert_consts)
+geo_cartesian geospatial_helmert(double x, double y, double z, geo_helmert_constants helmert_consts)
 {
 	double rX, rY, rZ;
 	double xOut, yOut, zOut;
@@ -241,7 +284,7 @@ geo_cartesian polar_to_cartesian(double latitude, double longitude, geo_ellipsoi
 	return point;
 }
 
-double meridional_arc(double Phi) {
+double geospatial_meridional_arc(double Phi) {
 	double sum, difference;
 	double aF0, bF0, n;
 	double A, B, C, D;
@@ -293,10 +336,10 @@ geo_lat_long cartesian_to_polar(double x, double y, double z, geo_ellipsoid eli)
  * Convert degrees, minutes & seconds values to decimal degrees */
 PHP_FUNCTION(dms_to_decimal)
 {
-	double degrees, minutes, sign;
+	double degrees, minutes;
 	double seconds, decimal;
 	char *direction = "";
-	int direction_len;
+	int direction_len, sign;
 
 	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "ddd|s", &degrees, &minutes, &seconds, &direction, &direction_len) == FAILURE) {
 		return;
@@ -364,7 +407,7 @@ PHP_FUNCTION(helmert)
 
 	array_init(return_value);
 	geo_helmert_constants helmert_constants = get_helmert_constants(from_reference_ellipsoid, to_reference_ellipsoid);
-	point = helmert(x, y, z, helmert_constants);
+	point = geospatial_helmert(x, y, z, helmert_constants);
 	add_assoc_double(return_value, "x", point.x);
 	add_assoc_double(return_value, "y", point.y);
 	add_assoc_double(return_value, "z", point.z);
@@ -488,7 +531,7 @@ coords_calculation eastings_northings_to_coords(double eastings, double northing
 	phiDerivative = PHI_0;
 	while ((northings - N_0 - M) >= 0.0001) {
 		phiDerivative = (northings - N_0 - M) / aF0 + phiDerivative;
-		M = meridional_arc(phiDerivative);
+		M = geospatial_meridional_arc(phiDerivative);
 	}
 	cosPhi = cos(phiDerivative);
 	tanPhi = tan(phiDerivative);
@@ -556,7 +599,7 @@ eastings_northings_calculation coord_to_eastings_northings(double Phi, double La
 
 	eastings_northings_calculation results;
 	eta2 = eta_sq(Phi);
-	results.M = meridional_arc(Phi);
+	results.M = geospatial_meridional_arc(Phi);
 	results.I = results.M + N_0;
 	results.II = eta2.nu / 2 * sinPhi * cosPhi;
 	results.III = eta2.nu / 24 * sinPhi * pow(cosPhi, 3) * (5 - tanPhi2 + 9 * eta2.eta2);
@@ -605,6 +648,18 @@ PHP_FUNCTION(coord_to_eastings_northings)
 	}
 }
 
+geo_lat_long geospatial_transform_datum(double latitude, double longitude,
+						 int from_reference_ellipsoid, int to_reference_ellipsoid)
+{
+	geo_cartesian point, converted_point;
+
+	geo_ellipsoid eli_from = get_ellipsoid(from_reference_ellipsoid);
+	geo_ellipsoid eli_to = get_ellipsoid(to_reference_ellipsoid);
+	point = polar_to_cartesian(latitude, longitude, eli_from);
+	geo_helmert_constants helmert_constants = get_helmert_constants(from_reference_ellipsoid, to_reference_ellipsoid);
+	converted_point = geospatial_helmert(point.x, point.y, point.z, helmert_constants);
+	return cartesian_to_polar(converted_point.x, converted_point.y, converted_point.z, eli_to);
+}
 
 /* {{{ proto transform_datum(double latitude, double longitude, long from_reference_ellipsoid, long to_reference_ellipsoid)
  * Unified function to transform projection of geo-cordinates between datums */
@@ -612,18 +667,12 @@ PHP_FUNCTION(transform_datum)
 {
 	double latitude, longitude;
 	long from_reference_ellipsoid, to_reference_ellipsoid;
-	geo_cartesian point, converted_point;
 	geo_lat_long polar;
 	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "ddll", &latitude, &longitude, &from_reference_ellipsoid, &to_reference_ellipsoid) == FAILURE) {
 		return;
 	}
 
-	geo_ellipsoid eli_from = get_ellipsoid(from_reference_ellipsoid);
-	geo_ellipsoid eli_to = get_ellipsoid(to_reference_ellipsoid);
-	point = polar_to_cartesian(latitude, longitude, eli_from);
-	geo_helmert_constants helmert_constants = get_helmert_constants(from_reference_ellipsoid, to_reference_ellipsoid);
-	converted_point = helmert(point.x, point.y, point.z, helmert_constants);
-	polar = cartesian_to_polar(converted_point.x, converted_point.y, converted_point.z, eli_to);
+	polar = geospatial_transform_datum(latitude, longitude, from_reference_ellipsoid, to_reference_ellipsoid);
 
 	array_init(return_value);
 	add_assoc_double(return_value, "lat", polar.latitude);
@@ -632,29 +681,153 @@ PHP_FUNCTION(transform_datum)
 }
 /* }}} */
 
-/* {{{ proto haversine(double fromLat, double fromLong, double toLat, double toLong [, double radius ])
- * Calculates the greater circle distance between the two lattitude/longitude pairs */
-PHP_FUNCTION(haversine)
+
+
+
+int geospatial_get_sign_from_direction(char *direction)
 {
-	double fromLat, fromLong, toLat, toLong, deltaLat, deltaLong;
-	double radius = GEO_EARTH_RADIUS, latH, longH, result;
-	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "dddd|d", &fromLat, &fromLong, &toLat, &toLong, &radius) == FAILURE) {
+	return strcmp(direction, "S") == 0 || strcmp(direction, "W") == 0 ? -1 : 1;
+}
+
+PHP_METHOD(LatLong, __construct)
+{
+    char *lat_str = NULL;
+    int lat_str_len = 0;
+    char *long_str = NULL;
+    int long_str_len = 0, sign;
+    double latitude, longitude;
+    char lat_dir[2], long_dir[2];
+    double minutes;
+    int degrees;
+    long reference_ellipsoid = GEO_WGS84;
+	zval *objvar = getThis();
+
+	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "ss|l", &lat_str, &lat_str_len, &long_str, &long_str_len, &reference_ellipsoid) == FAILURE) {
 		return;
 	}
+
+	if (!objvar) {
+		php_error_docref(NULL TSRMLS_CC, E_WARNING, "Constructor called statically!");
+		RETURN_FALSE;
+	}
+
+
+	if (sscanf(lat_str, "%lf %c", &latitude, lat_dir)) {
+		sign = geospatial_get_sign_from_direction(lat_dir);
+	    add_property_double(objvar, "latitude", sign*latitude);
+	} else if (sscanf(lat_str, "%d° %lf\" %c", &degrees, &minutes, lat_dir)) {
+		sign = geospatial_get_sign_from_direction(lat_dir);
+	    add_property_double(objvar, "latitude", sign*degrees + minutes / 60.0);
+	}
+	if (sscanf(long_str, "%lf %c", &longitude, long_dir)) {
+		sign = geospatial_get_sign_from_direction(long_dir);
+	    add_property_double(objvar, "longitude", sign*longitude);
+	}
+
+	add_property_long(objvar, "reference_ellipsoid", reference_ellipsoid);
+}
+
+double geospatial_haversine(double fromLat, double fromLong, double toLat, double toLong, double radius)
+{
+	double deltaLat, deltaLong,  latH, longH, result;
 
 	deltaLat = (fromLat - toLat) * GEO_DEG_TO_RAD;
 	deltaLong = (fromLong - toLong) * GEO_DEG_TO_RAD;
 
-	latH = sin(deltaLat * 0.5);
-	latH *= latH;
-	longH = sin(deltaLong * 0.5);
-	longH *= longH;
+	latH = pow(sin(deltaLat * 0.5), 2);
+	longH = pow(sin(deltaLong * 0.5), 2);
 
 	result = cos(fromLat * GEO_DEG_TO_RAD) * cos(toLat * GEO_DEG_TO_RAD);
-	result = radius * 2.0 * asin(sqrt(latH + result * longH));
+	return radius * 2.0 * asin(sqrt(latH + result * longH));
+}
+
+/* {{{ proto haversine(double fromLat, double fromLong, double toLat, double toLong [, double radius ])
+ * Calculates the greater circle distance between the two lattitude/longitude pairs */
+PHP_FUNCTION(haversine)
+{
+	double fromLat, fromLong, toLat, toLong;
+	double radius = GEO_EARTH_RADIUS, result;
+	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "dddd|d", &fromLat, &fromLong, &toLat, &toLong, &radius) == FAILURE) {
+		return;
+	}
+
+	result = geospatial_haversine(fromLat, fromLong, toLat, toLong, radius);
 	RETURN_DOUBLE(result);
 }
 /* }}} */
+
+PHP_METHOD(LatLong, transformDatum)
+{
+	long  to_reference_ellipsoid = GEO_WGS84;
+    zval *thisobjvar = getThis();
+	geo_cartesian point, converted_point;
+	geo_lat_long polar;
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "l",
+								          &to_reference_ellipsoid) == FAILURE) {
+        RETURN_NULL();
+	}
+
+	zval **fromLat;
+	if (zend_hash_find(Z_OBJPROP_P(thisobjvar),
+					           "latitude", sizeof("latitude"), (void **)&fromLat) == FAILURE) {
+		    return;
+	}
+	zval **fromLong;
+	if (zend_hash_find(Z_OBJPROP_P(thisobjvar),
+	                           "longitude", sizeof("longitude"), (void**)&fromLong) == FAILURE) {
+	         return;
+	}
+	zval **fromEllipsoid;
+	if (zend_hash_find(Z_OBJPROP_P(thisobjvar),
+	                           "reference_ellipsoid", sizeof("reference_ellipsoid"), (void**)&fromEllipsoid) == FAILURE) {
+	         return;
+	}
+
+
+	polar = geospatial_transform_datum(Z_DVAL_PP(fromLat), Z_DVAL_PP(fromLong), Z_LVAL_PP(fromEllipsoid), to_reference_ellipsoid);
+
+	array_init(return_value);
+	add_assoc_double(return_value, "lat", polar.latitude);
+	add_assoc_double(return_value, "long", polar.longitude);
+	add_assoc_double(return_value, "height", polar.height);
+}
+
+
+PHP_METHOD(LatLong, getHaversineDistance)
+{
+	double deltaLat, deltaLong;
+	double radius = GEO_EARTH_RADIUS, result;
+	zval *objvar;
+    zval *thisobjvar = getThis();
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "O|d",
+								          &objvar, php_geospatial_fc_entry, &radius) == FAILURE) {
+			        RETURN_NULL();
+	}
+	zval **fromLat;
+	if (zend_hash_find(Z_OBJPROP_P(thisobjvar),
+					           "latitude", sizeof("latitude"), (void **)&fromLat) == FAILURE) {
+		    return;
+	}
+	zval **fromLong;
+	if (zend_hash_find(Z_OBJPROP_P(thisobjvar),
+	                           "longitude", sizeof("longitude"), (void**)&fromLong) == FAILURE) {
+	         return;
+	}
+
+	zval **toLat;
+	if (zend_hash_find(Z_OBJPROP_P(objvar),
+	                            "latitude", sizeof("latitude"), (void**)&toLat) == FAILURE) {
+	          return;
+	}
+	 zval **toLong;
+	     if (zend_hash_find(Z_OBJPROP_P(objvar),
+	                           "longitude", sizeof("longitude"), (void**)&toLong) == FAILURE) {
+	           return;
+	}
+
+	result = geospatial_haversine(Z_DVAL_PP(fromLat), Z_DVAL_PP(fromLong), Z_DVAL_PP(toLat), Z_DVAL_PP(toLong), radius);
+	RETURN_DOUBLE(result);
+}
 
 /*
  * Local variables:
