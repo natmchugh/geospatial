@@ -18,11 +18,29 @@ PHP Extension to handle common geospatial functions. The extension currently has
 
 ## Usage
 
-The extension makes use of the geojson standard format for co-ordinates. One important thing to note about this format is that points are specied longitude, latitude.
+The extension makes use of the geojson standard format for co-ordinates. One important thing to note about this format is that points are specied longitude **first**.
+
+e.g.
+$greenwichObservatory = array(
+	'type' => 'Point',
+	'coordinates' => array( -0.001475 , 51.477811)
+);
+
 
 ### Haversine
 
 ### Vincety
+
+$flinders = array(
+	'type' => 'Point',
+	'coordinates' => array( $flindersPeakLong, $flindersPeakLat )
+);
+$buninyong = array(
+	'type' => 'Point',
+	'coordinates' => array( $buninyongLong, $buninyongLat )
+);
+var_dump(vincenty($flinders, $buninyong));
+
 
 ### Helmert Transformation
 
