@@ -1,11 +1,9 @@
-# geospatial - A PHP Geospatial Extension
+# geospatial - PHP Geospatial Extension
 
-PHP Extension to handle common geospatial functions.
+PHP Extension to handle common geospatial functions. The extension currently has implementations of the haversine and vincety folrmulas as well as a helmert transfomation function.
 
 ## Instalation
 ----------------------------
-    
-
 
     git clone git@github.com:php-geospatial/geospatial.git
     cd geospatial
@@ -20,11 +18,11 @@ PHP Extension to handle common geospatial functions.
 
 ## Usage
 
-
+The extension makes use of the geojson standard format for co-ordinates. One important thing to note about this format is that points are specied longitude, latitude.
 
 ### Haversine
 
 ### Vincety
 
-## Helmert Transformation
+### Helmert Transformation
 
